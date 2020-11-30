@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+#set -eu pipefail
+set -eux
 
 cd "$(dirname "$0")"
 
@@ -22,7 +23,6 @@ EOF
 function cleanup() {
     (
         rm -f "${TEMP_FILE}" || true
-        kill "$(pgrep -lf 'Chrome.app' | grep 'temporary_aws_credentials' | awk '{ print $1; }')"
     ) &>/dev/null
 }
 trap cleanup EXIT
@@ -60,7 +60,7 @@ APP_NAME="$(argv app "" "${*:-}")"
 DURATION_HOURS="$(argv duration 8 "${*:-}")"
 ROLE_ARN="$(argv role-arn "" "${*:-}")"
 AWS_CREDENTIALS=~/.aws/credentials
-TEMP_FILE="${HOME}/Downloads/temporary_aws_credentials$(date +"%Y-%m-%d_%H-%M-%S").txt"
+TEMP_FILE=$(mktemp)
 
 [[ -z "${PROFILE_NAME}" ]] && PROFILE_NAME=$(_selaws)
 
@@ -74,14 +74,14 @@ if [[ -z $ROLE_ARN ]]; then
     ROLE_ARN=$(echo "${PROFILE_CONFIG}" |  (grep 'role_arn.*' || true) | sed -E 's/^.*role_arn *= *([^ ]*).*$/\1/')
 fi
 
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+google-chrome-unstable \
     --load-extension="${PWD}/chrome_extension" --disable-extensions-except="${PWD}/chrome_extension" \
     --user-data-dir="${PWD}/user_data" \
     "http://localhost/?durationHours=${DURATION_HOURS}&app=${APP_NAME}&filename=$(basename "${TEMP_FILE}")&roleArn=${ROLE_ARN}" 2>/dev/null &
 
 PID=$!
 
-until [ -f "${TEMP_FILE}" ]; do (sleep 1 && printf "."); done
+while ! [ -s "$TEMP_FILE" ]; do (sleep 1 && printf "."); done
 
 # kill this chrome
 kill $PID
